@@ -1,0 +1,107 @@
+AI MEETING INTELLIGENCE - HOW TO RUN (Windows)
+================================================
+
+FIXES ALREADY APPLIED IN THIS ZIP:
+- backend/app/ai/local_mock_provider.py: fake Urdu/Roman-Urdu "translation"
+  hack removed (it used to replace real speech with unrelated canned
+  sentences). Ab actual recognized text hi return hota hai.
+- backend/app/ai/gemini_provider.py: real audio transcription implemented
+  using Gemini's File API, so transcripts and chatbot answers are now based
+  on the real recording instead of hardcoded demo data.
+- backend/app/ai/gemini_provider.py: model names updated - "gemini-1.5-flash"
+  (retired by Google) is replaced everywhere with "gemini-2.5-flash", and
+  the retired "text-embedding-004" embedding model is replaced with
+  "gemini-embedding-001" (768-dim output).
+- backend/app/ai/gemini_provider.py: auth switched to the "x-goog-api-key"
+  header (Google's current standard) instead of the old "?key=" query
+  param.
+- backend/app/ai/gemini_provider.py: NO MORE SILENT FALLBACK. Pehle agar
+  Gemini call fail hoti thi (bad key, quota, wrong project, etc.) to code
+  chup-chaap mock/heuristic data bana kar de deta tha, aur aapko pata hi
+  nahi chalta tha ke asal AI call fail ho rahi hai. Ab is soorat mein
+  meeting ka status "FAILED" hoga aur error_message field mein Google ka
+  ASAL error text save hoga - guess karne ki zaroorat nahi.
+- docker-compose.yml: hardcoded "AI_PROVIDER=mock" hata diya; ab root .env
+  file se AI_PROVIDER / GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY
+  read hote hain.
+- backend/.env aur root .env: AI_PROVIDER=gemini already set hai (aapko
+  sirf API key daalni hai).
+
+NOTE: node_modules, venv, uploads (old media), and the sqlite database were
+NOT included to keep this zip small. You will recreate them below.
+
+------------------------------------------------
+IMPORTANT - Gemini "AQ." key issue (padhna zaroori)
+------------------------------------------------
+Agar aistudio.google.com/apikey se generate ki gayi key "AQ." se shuru ho
+rahi hai (purane "AIzaSy..." format ki jagah), to ye Google AI Studio ka
+naya "Authentication Key" format hai. Is waqt (Sep 2026) bohat se accounts
+par ye AQ-format keys generativelanguage.googleapis.com REST API ke sath
+kaam nahi kar rahin (401 ACCESS_TOKEN_TYPE_UNSUPPORTED / "API key not
+valid") - chahe query param se bhejo ya header se. Ye Google ke side ka
+rollout bug hai, code ki ghalti nahi.
+
+Agar aapki key bhi "AQ." se shuru hoti hai aur upload ke baad meeting
+FAILED ho jaye with this kind of error, to:
+  1. aistudio.google.com/apikey par "Create key in existing project"
+     try karein (kabhi kabhi purane project mein AIzaSy... key mil jati
+     hai) - lekin Google is legacy format ko poori tarah band bhi kar
+     sakta hai.
+  2. Behtar/reliable rasta: AI_PROVIDER=openai (platform.openai.com se
+     OPENAI_API_KEY) ya AI_PROVIDER=anthropic (console.anthropic.com se
+     ANTHROPIC_API_KEY) use karein - dono providers ke key formats abhi
+     stable hain, aur backend/app/ai/openai_provider.py aur
+     anthropic_provider.py already implemented hain.
+
+------------------------------------------------
+STEP 1 - Get an AI provider API key
+------------------------------------------------
+Gemini: https://aistudio.google.com/apikey se key generate karein.
+  (Upar wala "AQ." wala note zaroor parh lein.)
+OpenAI: https://platform.openai.com/api-keys
+Anthropic: https://console.anthropic.com/settings/keys
+
+Phir backend\.env (aur agar Docker use kar rahe hain to root .env bhi)
+kholein aur AI_PROVIDER + corresponding *_API_KEY line update karein,
+misal ke taur par:
+    AI_PROVIDER=gemini
+    GEMINI_API_KEY=your-actual-key-here
+
+------------------------------------------------
+STEP 2 - Run the backend (PowerShell / CMD)
+------------------------------------------------
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+Backend will run at: http://localhost:8000
+
+------------------------------------------------
+STEP 3 - Run the frontend (open a NEW terminal window)
+------------------------------------------------
+cd frontend
+npm install
+npm run dev
+
+Frontend will run at: http://localhost:3000
+
+------------------------------------------------
+STEP 4 - Use the app
+------------------------------------------------
+1. Open http://localhost:3000 in your browser.
+2. Sign up / log in.
+3. Upload a video or audio file.
+4. Wait for processing to complete (status will move through
+   TRANSCRIBING -> ANALYZING -> INDEXING -> COMPLETED).
+5. Open the meeting and ask the chatbot questions about it.
+
+TROUBLESHOOTING
+------------------------------------------------
+- "venv\Scripts\activate" blocked in PowerShell:
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+- ffmpeg errors during audio extraction from video: install ffmpeg and
+  make sure it's on your PATH (https://www.gyan.dev/ffmpeg/builds/).
+- Old meetings uploaded before this fix will still show old/mock data;
+  re-upload them to get real transcripts and answers.
